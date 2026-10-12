@@ -1,0 +1,43 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: autopsy
+      POSTGRES_USER: autopsy
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - database:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U autopsy -d autopsy"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+  app:
+    build: .
+    environment:
+      DATABASE_URL: postgresql://autopsy:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/autopsy
+      TRUSTED_PROXY_SECRET: ${TRUSTED_PROXY_SECRET:?Set TRUSTED_PROXY_SECRET}
+      MONITORING_TOKEN: ${MONITORING_TOKEN:?Set MONITORING_TOKEN}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+  proxy:
+    image: nginx:1.28-alpine
+    environment:
+      TRUSTED_PROXY_SECRET: ${TRUSTED_PROXY_SECRET:?Set TRUSTED_PROXY_SECRET}
+      NGINX_ENVSUBST_FILTER: ^TRUSTED_PROXY_SECRET$$
+    volumes:
+      - ./deploy/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: unless-stopped
+volumes:
+  database:

@@ -1,0 +1,51 @@
+name: Verification
+on: [push, pull_request]
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:qa
+      - run: npm run test:production
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-traces
+          path: test-results/
+  containers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      POSTGRES_PASSWORD: ci-database-password-00000000000000000
+      TRUSTED_PROXY_SECRET: ci-proxy-secret-000000000000000000000
+      MONITORING_TOKEN: ci-monitor-secret-0000000000000000000
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose config --quiet
+      - run: docker compose up --build --wait --wait-timeout 180
+      - run: curl --fail http://127.0.0.1:8080/api/health/live
+      - name: Verify proxy forwarding and shared quotas
+        run: |
+          for i in 1 2 3 4 5; do
+            test "$(curl -s -o /dev/null -w '%{http_code}' -H "X-Forwarded-For: 192.0.2.$i" -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8080/api/analyze)" = 400
+          done
+          test "$(curl -s -o /dev/null -w '%{http_code}' -H 'X-Forwarded-For: 192.0.2.99' -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:8080/api/analyze)" = 429
+      - name: Collect deployment evidence
+        if: always()
+        run: docker compose logs --no-color > deployment.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: deployment-evidence
+          path: deployment.log
+      - if: always()
+        run: docker compose down

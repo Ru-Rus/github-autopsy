@@ -1,0 +1,37 @@
+{
+  "name": "github-autopsy",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build && node scripts/prepare-standalone.cjs",
+    "start": "node scripts/validate-env.cjs && node .next/standalone/server.js",
+    "db:migrate": "node scripts/migrate.cjs",
+    "typecheck": "tsc --noEmit",
+    "test": "npm run test:qa",
+    "test:qa": "node --test scripts/qa.test.cjs",
+    "test:production": "node --test scripts/production.test.cjs",
+    "test:coverage": "node --test --experimental-test-coverage --test-coverage-include=*.ts --test-coverage-include=app/**/*.ts scripts/qa.test.cjs scripts/production.test.cjs",
+    "test:e2e": "node scripts/browser-tests.cjs"
+  },
+  "engines": {
+    "node": ">=20.9.0"
+  },
+  "dependencies": {
+    "next": "16.3.8",
+    "pg": "^8.23.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.64.0",
+    "@tailwindcss/postcss": "^4.1.13",
+    "@types/node": "^22.15.0",
+    "@types/pg": "^8.23.1",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5.9.3"
+  }
+}
