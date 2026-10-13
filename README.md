@@ -4,7 +4,9 @@ A repository forensics application that turns observable GitHub signals into a t
 
 ## Run locally
 
-Use Node.js 20.9 or newer. Copy .env.example to .env.local, configure PostgreSQL and run `npm run db:migrate`. Optionally add a GitHub token. Then run npm install and npm run dev, and open http://localhost:3000. Tokens are only read on the server. Development without a proxy uses one shared anonymous client identity.
+For a local PostgreSQL database without Docker or a system installer, run `npm install` then `npm run db:local`. This starts the bundled PostgreSQL server on `127.0.0.1:5432`, creates the database and tables, and writes random credentials to `.env.local` if `DATABASE_URL` is not configured. Keep that terminal running and use `npm run dev` in another terminal. Database files persist in the ignored `.local-postgres/` directory. Restart the database with `npm run db:local` after rebooting. DBeaver can connect using host `127.0.0.1`, port `5432`, database/user `autopsy`, and the password from `.env.local`. This helper is for local development.
+
+Use Node.js 20.9 or newer. Copy .env.example to .env.local, configure PostgreSQL and run `npm run db:migrate`. Optionally add a GitHub token. Then run npm install and npm run dev, and open http://localhost:3000. Tokens are only read on the server. Development without a proxy uses one shared anonymous client identity. Leave `TRUSTED_PROXY_SECRET` empty when opening the development server directly; setting it requires authenticated proxy headers even in development. Production requires the configured trusted proxy.
 
 For production, run `npm run build` followed by `npm start`. The build packages a standalone server and its static assets. Provide environment variables to the production process. Node.js 22 is recommended and required for the coverage command.
 

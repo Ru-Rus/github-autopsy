@@ -7,6 +7,7 @@
     "build": "next build && node scripts/prepare-standalone.cjs",
     "start": "node scripts/validate-env.cjs && node .next/standalone/server.js",
     "db:migrate": "node scripts/migrate.cjs",
+    "db:local": "node scripts/local-database.cjs",
     "typecheck": "tsc --noEmit",
     "test": "npm run test:qa",
     "test:qa": "node --test scripts/qa.test.cjs",
