@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import type { Report } from "@/types";
 import { collect } from "@/github";
 import { analyze } from "@/analyze";
 import { reportCache } from "@/report-cache";
@@ -43,6 +44,8 @@ function parse(value: unknown) {
   return parts;
 }
 export const maxDuration = 60;
+const inFlight = new Map<string, Promise<Report>>();
+
 function throttled(retry: number) {
   event("request_throttled", { retrySeconds: retry });
   return NextResponse.json(
@@ -66,50 +69,91 @@ export async function POST(req: Request) {
       event("analysis_cached", { requestId, repository: repositoryTag(key) });
       return NextResponse.json(cached);
     }
+
+    if (inFlight.has(key)) {
+      const ongoing = await inFlight.get(key)!;
+      return NextResponse.json(ongoing);
+    }
+
     const quota = await limiter.analysis();
     if (quota) return throttled(quota);
-    event("analysis_started", { requestId, repository: repositoryTag(key) });
-    const signal = AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]);
-    const data = await collect(owner, name, signal);
-    const report = await analyze(data, owner, name, signal);
-    try {
-      if (
-        process.env.OPENAI_API_KEY &&
-        process.env.OPENAI_MODEL &&
-        report.findings.length
-      ) {
-        const quota = await limiter.ai();
-        if (quota) throw new Error("AI provider budget exhausted.");
+
+    const runAnalysis = async (): Promise<Report> => {
+      event("analysis_started", { requestId, repository: repositoryTag(key) });
+      const signal = AbortSignal.any([req.signal, AbortSignal.timeout(55_000)]);
+      const data = await collect(owner, name, signal);
+      const report = await analyze(data, owner, name, signal);
+
+      // Check if previous snapshot for identical commit revision already has an AI review
+      try {
+        const history = await snapshotStore.list(key);
+        const match = history.find((h) => h.revision && h.revision === report.revision);
+        if (match) {
+          const prev = await snapshotStore.get(match.id);
+          if (prev?.aiReview) {
+            report.aiReview = prev.aiReview;
+          }
+        }
+      } catch {
+        // Non-critical cache lookup failure
       }
-      report.aiReview = await generateReview(report, signal);
-    } catch (error) {
-      if (signal.aborted) throw error;
-      report.caveats.push(
-        "AI review is unavailable; deterministic scores and findings remain available.",
-      );
-      event("ai_review_unavailable", { requestId });
-    }
-    try {
-      report.snapshotId = await snapshotStore.save(report);
-      if (report.snapshotId)
-        report.history = await snapshotStore.list(report.repository.full_name);
-      if (!report.snapshotId)
+
+      if (!report.aiReview) {
+        try {
+          const hasAI =
+            (process.env.GEMINI_API_KEY ||
+              process.env.gemini_api_key ||
+              process.env.GOOGLE_API_KEY ||
+              process.env.google_api_key ||
+              (process.env.OPENAI_API_KEY && process.env.OPENAI_MODEL)) &&
+            report.findings.length;
+          if (hasAI) {
+            const quota = await limiter.ai();
+            if (quota) throw new Error("AI provider budget exhausted.");
+          }
+          report.aiReview = await generateReview(report, signal);
+        } catch (error) {
+          if (signal.aborted) throw error;
+          console.error("[AI Review Error]", error);
+          report.caveats.push(
+            "AI review is unavailable; deterministic scores and findings remain available.",
+          );
+          event("ai_review_unavailable", { requestId });
+        }
+      }
+
+      try {
+        report.snapshotId = await snapshotStore.save(report);
+        if (report.snapshotId)
+          report.history = await snapshotStore.list(report.repository.full_name);
+        if (!report.snapshotId)
+          report.caveats.push(
+            "Persistent storage is not configured; share links rerun analysis and may reuse a report cached for up to one minute.",
+          );
+      } catch {
         report.caveats.push(
-          "Persistent storage is not configured; share links rerun analysis and may reuse a report cached for up to one minute.",
+          "Persistent snapshot storage is unavailable; this report can still be exported and shared as a fresh analysis.",
         );
-    } catch {
-      report.caveats.push(
-        "Persistent snapshot storage is unavailable; this report can still be exported and shared as a fresh analysis.",
-      );
-      event("snapshot_save_failed", { requestId });
+        event("snapshot_save_failed", { requestId });
+      }
+
+      reportCache.set(key, report);
+      event("analysis_completed", {
+        requestId,
+        durationMs: Date.now() - started,
+        snapshotSaved: !!report.snapshotId,
+      });
+      return report;
+    };
+
+    const promise = runAnalysis();
+    inFlight.set(key, promise);
+    try {
+      const result = await promise;
+      return NextResponse.json(result);
+    } finally {
+      inFlight.delete(key);
     }
-    reportCache.set(key, report);
-    event("analysis_completed", {
-      requestId,
-      durationMs: Date.now() - started,
-      snapshotSaved: !!report.snapshotId,
-    });
-    return NextResponse.json(report);
   } catch (e) {
     const known = (e as { status?: number })?.status,
       timeout = e instanceof Error && e.name === "TimeoutError",
