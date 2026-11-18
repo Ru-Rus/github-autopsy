@@ -36,7 +36,31 @@ Reports are cached for one minute in a bounded per-process cache of 50 entries. 
 
 Production requires `DATABASE_URL` for shared rate limits and immutable snapshots. Run `npm run db:migrate` before startup. PostgreSQL transactions serialize saves across instances, enforce 1,000 reports capped at 1 MB each and publish report/history together. Reads verify content hashes; indexed history retrieves at most 50 summaries. Storage failures leave analysis available with a caveat. `REPORT_STORAGE_DIR` is only a development adapter. See [operations](deploy/OPERATIONS.md) for backups, restoration and retention.
 
-Set both `OPENAI_API_KEY` and `OPENAI_MODEL` to enable AI explanations with a model supporting Structured Outputs. Only scores, findings and caveats are submitted. Outputs must reference existing finding IDs. Provider failures, refusals or incomplete outputs leave the deterministic report available. The integration follows the [Responses API Structured Outputs format](https://developers.openai.com/api/docs/guides/structured-outputs?api-mode=responses). AI text can still be mistaken and does not replace measured evidence.
+Set `GEMINI_API_KEY` (and optionally `GEMINI_MODEL=gemini-2.5-flash`) to enable AI explanations using Google AI Studio's free tier. Alternatively, set both `OPENAI_API_KEY` and `OPENAI_MODEL` to use OpenAI. Only scores, findings and caveats are submitted. Outputs must reference existing finding IDs. Provider failures, refusals or incomplete outputs leave the deterministic report available. AI reviews are automatically cached by repository commit SHA to eliminate redundant API calls. AI text can still be mistaken and does not replace measured evidence.
+
+## Embeddable README Badges
+
+Display live repository health scores on your project's `README.md` using the badge endpoint:
+
+```markdown
+[![Autopsy Health](http://your-domain/api/badge/owner/repo)](http://your-domain/?repo=owner/repo)
+```
+
+The badge automatically renders as an SVG with color-coded health tiers (Green $\ge 80$, Yellow $\ge 60$, Red $< 60$).
+
+## Automated Deployment
+
+To pull updates and rebuild containers on your server:
+
+```sh
+./github-autopsy_deployment.sh
+```
+
+To clean expired rate limits and prune snapshots older than 90 days:
+
+```sh
+npm run db:clean
+```
 
 Rate limits and provider reservations use the shared PostgreSQL database across instances and fail closed when it is unavailable. The application ignores X-Forwarded-For: a private reverse proxy overwrites authenticated identity headers. Configure independent `TRUSTED_PROXY_SECRET` and `MONITORING_TOKEN` values (at least 32 URL-safe characters). GitHub reserves 50 requests per uncached analysis; AI permits 30 calls/hour with bounded evidence/output. Exhaustive historical ingestion, exact historical code size and other languages' syntax are outside this bounded implementation. Saved health trends begin with actual analyses.
 

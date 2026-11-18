@@ -23,6 +23,7 @@ export default function ReportView({
   onNew,
   onShare,
   onDownload,
+  onDownloadMarkdown,
   copied,
   error,
   onSnapshot,
@@ -31,6 +32,7 @@ export default function ReportView({
   onNew: () => void;
   onShare: () => void;
   onDownload: () => void;
+  onDownloadMarkdown?: () => void;
   copied: boolean;
   error: string;
   onSnapshot: (id: string) => void;
@@ -56,6 +58,9 @@ export default function ReportView({
           <button onClick={onShare}>
             {copied ? "Link copied ✓" : "↗ Share report"}
           </button>
+          {onDownloadMarkdown && (
+            <button onClick={onDownloadMarkdown}>↓ Export Markdown</button>
+          )}
           <button onClick={onDownload}>↓ Export JSON</button>
         </div>
       </nav>
@@ -142,46 +147,86 @@ export default function ReportView({
             ))}
           </div>
           <div className="content-grid">
-            {r.aiReview && <section className="panel">
-              <small>AI EXPLANATION OF MEASURED EVIDENCE</small>
-              <h2>Engineering review</h2>
-              <p>{r.aiReview.summary}</p>
-              {r.aiReview.risks.map(risk => <article className="finding" key={risk.findingId}><div>
-                <h3>{r.findings.find(finding => finding.id === risk.findingId)?.title}</h3>
-                <p className="evidence">{r.findings.find(finding => finding.id === risk.findingId)?.evidence}</p>
-                <p>{risk.why}</p><p><b>Recommended action: </b>{risk.action}</p>
-                <p><b>Potential impact: </b>{risk.impact}</p><small>CONFIDENCE {risk.confidence.toUpperCase()}</small>
-              </div></article>)}
-              {r.aiReview.caveats.map((caveat, index) => <p className="muted" key={index}>{caveat}</p>)}
-            </section>}
-            <section className="panel">
-              <div className="panel-head">
-                <div>
-                  <small>EVIDENCE REVIEW</small>
-                  <h2>Engineering findings</h2>
-                </div>
-                <span>{r.findings.length} signals</span>
-              </div>
-              {r.findings.length ? (
-                r.findings.map((f) => (
-                  <article className="finding" key={f.id}>
-                    <b className={"severity " + f.severity}>{f.severity}</b>
-                    <div>
-                      <h3>{f.title}</h3>
-                      <p className="evidence">{f.evidence}</p>
-                      <p>{f.explanation}</p>
-                      <div className="recommendation">
-                        <b>Next step</b>
-                        {f.recommendation}
-                      </div>
-                      <small>CONFIDENCE {f.confidence.toUpperCase()}</small>
+            <div className="content-main">
+              {r.aiReview && (
+                <section className="panel ai-panel">
+                  <div className="ai-badge">
+                    <span>✦ GEMINI AI ENGINEERING REVIEW</span>
+                  </div>
+                  <h2>AI Forensic Analysis</h2>
+                  <p className="ai-summary">{r.aiReview.summary}</p>
+                  <div className="ai-risks-title">
+                    Top Actionable Risks & Recommendations
+                  </div>
+                  {r.aiReview.risks.map((risk) => {
+                    const matched = r.findings.find(
+                      (finding) => finding.id === risk.findingId,
+                    );
+                    return (
+                      <article className="ai-risk-card" key={risk.findingId}>
+                        <div className="ai-risk-header">
+                          <h3>{matched?.title ?? risk.findingId}</h3>
+                          <span className={`ai-confidence ${risk.confidence}`}>
+                            {risk.confidence} confidence
+                          </span>
+                        </div>
+                        {matched?.evidence && (
+                          <div className="ai-risk-evidence">
+                            {matched.evidence}
+                          </div>
+                        )}
+                        <p className="ai-risk-why">{risk.why}</p>
+                        <div className="ai-risk-box">
+                          <div className="ai-risk-action">
+                            <b>Recommended Action</b>
+                            <span>{risk.action}</span>
+                          </div>
+                          <div className="ai-risk-impact">
+                            <b>Potential Impact</b>
+                            <span>{risk.impact}</span>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                  {r.aiReview.caveats.length > 0 && (
+                    <div className="ai-caveats">
+                      {r.aiReview.caveats.map((caveat, index) => (
+                        <p key={index}>• {caveat}</p>
+                      ))}
                     </div>
-                  </article>
-                ))
-              ) : (
-                <p className="empty">✓ No findings to display.</p>
+                  )}
+                </section>
               )}
-            </section>
+              <section className="panel">
+                <div className="panel-head">
+                  <div>
+                    <small>EVIDENCE REVIEW</small>
+                    <h2>Engineering findings</h2>
+                  </div>
+                  <span>{r.findings.length} signals</span>
+                </div>
+                {r.findings.length ? (
+                  r.findings.map((f) => (
+                    <article className="finding" key={f.id}>
+                      <b className={"severity " + f.severity}>{f.severity}</b>
+                      <div>
+                        <h3>{f.title}</h3>
+                        <p className="evidence">{f.evidence}</p>
+                        <p>{f.explanation}</p>
+                        <div className="recommendation">
+                          <b>Next step</b>
+                          {f.recommendation}
+                        </div>
+                        <small>CONFIDENCE {f.confidence.toUpperCase()}</small>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <p className="empty">✓ No findings to display.</p>
+                )}
+              </section>
+            </div>
             <aside className="panel">
               <small>REPOSITORY SNAPSHOT</small>
               <h2>Measured signals</h2>

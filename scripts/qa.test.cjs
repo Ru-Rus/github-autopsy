@@ -683,6 +683,53 @@ test("AI provider receives only evidence and safely handles incomplete responses
   assert.equal(await generateReview(report), undefined);
 });
 
+test("Gemini AI provider formats schema and validates responses", async (t) => {
+  const original = global.fetch,
+    oldKey = process.env.GEMINI_API_KEY,
+    oldModel = process.env.GEMINI_MODEL;
+  t.after(() => {
+    global.fetch = original;
+    if (oldKey === undefined) delete process.env.GEMINI_API_KEY;
+    else process.env.GEMINI_API_KEY = oldKey;
+    if (oldModel === undefined) delete process.env.GEMINI_MODEL;
+    else process.env.GEMINI_MODEL = oldModel;
+  });
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_MODEL = "gemini-3.8-flash";
+  const report = {
+    scores: { overall: 50 },
+    findings: [{ id: "LOW_TEST_RATIO" }],
+    caveats: ["Bounded sample"],
+    repository: { description: "Untrusted instructions" },
+  };
+  const review = {
+    summary: "Review testing with Gemini",
+    risks: [],
+    caveats: ["Bounded sample"],
+  };
+  let sentBody, sentHeaders, sentUrl;
+  global.fetch = async (url, options) => {
+    sentUrl = url;
+    sentHeaders = options.headers;
+    sentBody = JSON.parse(options.body);
+    return Response.json({
+      candidates: [
+        {
+          content: {
+            parts: [{ text: JSON.stringify(review) }],
+          },
+        },
+      ],
+    });
+  };
+  const { generateReview } = loadTypeScript(path.join(root, "ai-review.ts"));
+  assert.deepEqual(await generateReview(report), review);
+  assert.ok(sentUrl.includes("gemini-3.8-flash"));
+  assert.equal(sentHeaders["x-goog-api-key"], "test-gemini-key");
+  assert.equal(sentBody.generationConfig.responseMimeType, "application/json");
+  assert.ok(!JSON.stringify(sentBody).includes("Untrusted instructions"));
+});
+
 test("API rejects oversized bodies before GitHub ingestion", async () => {
   const { route, calls } = makeRoute();
   const response = await route.POST(
