@@ -105,12 +105,8 @@ export function createLimiter(consume: Consume = consumeShared) {
       ]);
     },
     async ai() {
-      // Free-tier safety: 10 calls/minute, 30 calls/hour, max_output_tokens=1800.
-      // Shields Google AI Studio (15 RPM / 1500 RPD) and OpenAI from quota depletion.
-      return consume([
-        { key: "ai:minute", limit: 10, windowMs: 60000 },
-        { key: "ai:hour", limit: 30, windowMs: 3600000 },
-      ]);
+      // 30 calls per hour, max_output_tokens=1800 and bounded evidence per call.
+      return consume([{ key: "openai:hour", limit: 30, windowMs: 3600000 }]);
     },
   };
 }
